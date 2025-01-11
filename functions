@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# Load config
+BASEDIR="$(dirname $0)"
+source "$BASEDIR/config"
+
+
+# Function to decrypt wrapped password
+function unwrap_passwd {
+  if [[ "$PROTECT_PASSWORD" == "" ]]; then
+    echo "Missing PROTECT_PASSWORD, can't decrypt." >&2
+  elif [[ "$*" == "" ]]; then
+    echo "Missing encrypted string to unwrap, can't decrypt." >&2
+  else 
+    echo -e "$*" | tr '.' '\n' | base64 -d | gpg --decrypt --passphrase "$PROTECT_PASSWORD" --batch 2>/dev/null
+  fi
+}
+
+
+# Function to encrypt password in wrapper
+function wrap_passwd {
+  if [[ "$PROTECT_PASSWORD" == "" ]]; then
+    echo "Warning: No PROTECT_PASSWORD set, password will be sent unencrypted." >&2
+  elif [[ "$*" == "" ]]; then
+    echo "No password argument given to wrap." >&2
+  else 
+    echo -n "$*" | gpg --armor --symmetric --cipher-algo AES256 --passphrase "$PROTECT_PASSWORD" --batch | base64 | tr '\n' '.' 2>/dev/null
+  fi
+}
+
+
+# Get my IP remotely
+function my_ip {
+  if [[ "$USE_IP" != "" ]]; then
+    ip="$USE_IP"
+  elif [[ -e "$BASEDIR/.vars/ip" ]]; then
+    cat "$BASEDIR/.vars/ip"
+  else
+    IP_FINDER_URL="${IP_FINDER_URL-https://icanhazip.com}"    
+    if [[ "${USE_IP4OR6:0:1}" == "4" ]] || [[ "$USE_IP4OR6:0:1}" == "6" ]]; then
+      ip=$(curl -sSL -${USE_IP4OR6:0:1} "$IP_FINDER_URL")
+    else
+      ip=$(curl -sSL "$IP_FINDER_URL")
+    fi
+  fi
+  [[ ! -e "$BASEDIR/.vars" ]] && mkdir "$BASEDIR/.vars"
+  [[ "$(echo $ip | grep ':')" != "" ]] && ip="[$ip]" 
+  echo "$ip" > "$BASEDIR/.vars/ip"
+  echo "$ip"
+
+}
+
+
+function random_key {
+  if [[ -e "$BASEDIR/.vars/key" ]]; then
+    cat "$BASEDIR/.vars/key"
+  else
+    key="$(head -c 15 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    [[ ! -e "$BASEDIR/.vars" ]] && mkdir "$BASEDIR/.vars"
+    echo "$key" > "$BASEDIR/.vars/key"
+    echo "$key"
+  fi
+}
+
+
+function setup_server {
+  [[ -e "$BASEDIR/.vars/pid" ]] && kill "$BASEDIR/.vars/pid"
+  mkdir -p "$BASEDIR/.webroot/cgi-bin"
+  cp -p "$BASEDIR/auth" "$BASEDIR/.webroot/cgi-bin/$(random_key)"
+  chmod +x "$BASEDIR/.webroot/cgi-bin/$(random_key)"
+  python -m http.server --directory="$BASEDIR/.webroot" --cgi --bind="$(my_ip)" ${LISTEN_PORT-8080} &
+  [[ ! -e "$BASEDIR/.vars" ]] && mkdir "$BASEDIR/.vars"
+  echo "$!" > $BASEDIR/.vars/pid
+}
+
+
+# Send request
+function send_push {
+  if [[ "$USER_KEY" == "" ]]; then
+    echo "Missing USER_KEY, can't send request." >&2
+  elif [[ "$APP_TOKEN" == "" ]]; then
+    echo "Missing APP_TOKEN, can't send request." >&2
+  else
+    curl -s \
+      --form-string "token=$APP_TOKEN" \
+      --form-string "user=$USER_KEY" \
+      --form-string "message=Click the link below to authorize LUKS to unlock $HOSTNAME" \
+      --form-string "title=LUKS remote unlock request" \
+      --form-string "url=http://$(my_ip):${LISTEN_PORT-8080}/cgi-bin/$(random_key)" \
+      --form-string "url_title=Click to Authorize" \
+    "https://api.pushover.net/1/messages.json"
+  fi
+}
+
+function cleanup {
+  kill $(cat "$BASEDIR/.vars/pid")
+  rm -r "$BASEDIR/.vars" "$BASEDIR/.webroot"
+}

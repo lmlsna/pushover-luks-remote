@@ -1,0 +1,22 @@
+# From pushover account
+USER_KEY=abcdadvfdhgftijfdyhgdrtihfryjf
+
+# From app registered with pushover
+APP_TOKEN=ghiydcbjyrdfvjkydscvhhddhhgdgh
+
+# Secondary password to protect LUKS password in transit.
+# (Optional, leave blank disable.)  
+PROTECT_PASSWORD=test123
+
+# (Optional) Static IP
+USE_IP=
+
+# (Optional) Find an IP4/6 address. Blank forces neither.
+USE_IP4OR6=6
+
+# Connect back on port
+LISTEN_PORT=8080
+
+# Website that returns ip of request origin
+IP_FINDER_URL=https://icanhazip.com
+

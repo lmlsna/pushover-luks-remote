@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo -e 'Content-type: text/html\n\n<html>\n<body>\n<p>success.</p>\n</body>\n</html>'
+
+$(dirname $0)/../../unlock

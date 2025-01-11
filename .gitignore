@@ -1,0 +1,6 @@
+config
+.vars
+.vars/*
+.webroot
+.webroot/*
+
